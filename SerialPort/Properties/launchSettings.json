@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "SerialPortLibrary": {
+      "commandName": "Project",
+      "environmentVariables": {
+        "索引鍵": "值",
+        "ASPNETCORE_ENVIRONMENT": "Development"
+      }
+    }
+  }
+}
