@@ -31,7 +31,9 @@ namespace ModbusPlatform
             {
                 Thread.Sleep(1 * 1000);
                 reTryCount++;
-            }
+            }            
+
+            Console.WriteLine("Current BytesToRead : " + serialPort.BytesToRead);
 
             if (serialPort.BytesToRead > 0)
             {
@@ -64,6 +66,7 @@ namespace ModbusPlatform
         private static IConfiguration IConfiguration;
         private static string environmentName;
         private static SerialPort _serial_sphygmomanometer;
+        private static bool isEnd = false;
 
         static void Main(string[] args)
         {
@@ -101,27 +104,37 @@ namespace ModbusPlatform
                 _serial_sphygmomanometer = new SerialPort();
                 _serial_sphygmomanometer.PortName = chooseComPort;
                 _serial_sphygmomanometer.BaudRate = 9600;               // Baudrate = 9600bps
-                _serial_sphygmomanometer.Parity = Parity.None;        // Parity bits = none  
+                _serial_sphygmomanometer.Parity = Parity.None;          // Parity bits = none  
                 _serial_sphygmomanometer.DataBits = 8;                  // No of Data bits = 8
                 _serial_sphygmomanometer.StopBits = StopBits.One;       // No of Stop bits = 1
 
                 int dataLength = 0;
 
                 // 直接宣告
-                //_serial_sphygmomanometer.ReadBufferSize = dataLength;
-                //_serial_sphygmomanometer.WriteBufferSize = dataLength;
+                _serial_sphygmomanometer.ReadBufferSize = 64;
+                _serial_sphygmomanometer.WriteBufferSize = 64;
                 //_serial_sphygmomanometer.DataReceived += new SerialDataReceivedEventHandler(_serialPort_DataReceived);
 
                 Console.WriteLine("Connect to Serial Port ......");
 
-                _serial_sphygmomanometer.Open();
+                try
+                {
+                    _serial_sphygmomanometer.Open();
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine("not open this serial port");
+                    isEnd = true;
+                }
+                
 
                 Console.WriteLine(_serial_sphygmomanometer.IsOpen ? "Connected" : "not Open");
                 Console.WriteLine("-------------------------------------------------------------------------------------------------------");
 
-                while (true)
+                while (!isEnd)
                 {
-                    Console.WriteLine("Please Enter Command：[Restart]、[SearchAddress]、[GetChannelNumber]、[OpenChannel]、[GetChannelStatus]");
+
+                    Console.WriteLine("Please Enter Command Number：\r\n[1] Restart \r\n[2] SearchAddress \r\n[3] GetChannelNumber \r\n[4] OpenChannel \r\n[5] GetChannelStatus \r\n[6] Close Application");
 
                     var command = Console.ReadLine();
                     Console.WriteLine("-------------------------------------------------------------------------------------------------------");
@@ -129,67 +142,78 @@ namespace ModbusPlatform
                     var api = new byte[0];
 
                     var commandIsExists = true;
-
-                    var lockControlBoardNumber = -1;
-
-                    Console.WriteLine("Please enter the 〝Lock control board number 〞(0 ~ 10)");
-
-                    var isParseInt = int.TryParse(Console.ReadLine() , out lockControlBoardNumber);
-                    Console.WriteLine("-------------------------------------------------------------------------------------------------------");
-
-                    if (!isParseInt) break;
+                    
                     var hasEnterChannel = false;
+
+                    var isSphygmomanometer = false; // 血壓機
 
                     switch (command)
                     {
-                        //case "info":
-                        //    api = API.GetMeasurement;
-                        //    dataLength = 64;
-                        //    break;
-                        //case "start":
-                        //    api = API.StartMeasurement;
-                        //    dataLength = 64;
-                        //    break;
-                        //case "end":
-                        //    api = API.StopMeasurement;
-                        //    dataLength = 64;
-                        //    break;                        
-                        case "Restart":
+                        case "info":
+                            api = API.GetMeasurement;
+                            dataLength = 64;
+                            isSphygmomanometer = true;
+                            break;
+                        case "start":
+                            api = API.StartMeasurement;
+                            dataLength = 64;
+                            isSphygmomanometer = true;
+                            break;
+                        case "end":
+                            api = API.StopMeasurement;
+                            dataLength = 64;
+                            isSphygmomanometer = true;
+                            break;
+                        case "1":
                             api = API.Restart;
                             dataLength = 9;
                             break;
-                        case "SearchAddress":
+                        case "2":
                             api = API.SearchAddress;
                             dataLength = 9;
                             break;
-                        case "GetChannelNumber":
+                        case "3":
                             api = API.GetChannelNumber;
                             dataLength = 9;
                             break;
-                        case "OpenChannel":
+                        case "4":
                             api = API.OpenChannel;
                             dataLength = 10;
                             hasEnterChannel = true;
                             break;
-                        case "GetChannelStatus":
+                        case "5":
                             api = API.GetChannelStatus;
                             dataLength = 10;
                             hasEnterChannel = true;
+                            break;
+                        case "6":
+                            isEnd = true;
                             break;
                         default:
                             commandIsExists = false;
                             break;
                     }
 
-                    //設定發送端位址
-                    api[3] = Convert.ToByte(lockControlBoardNumber);
+                    if (isEnd) break;
 
+                    int lockControlBoardNumber = 0;
+                    if (!isSphygmomanometer)
+                    {
+                        Console.WriteLine("Please enter the 〝Lock control board number 〞(0 ~ 10)");
+                        
+                        var isParseInt = int.TryParse(Console.ReadLine(), out lockControlBoardNumber);
+                        Console.WriteLine("-------------------------------------------------------------------------------------------------------");
+
+                        if (!isParseInt) break;
+                    }
+
+                    //設定發送端位址                    
                     if (hasEnterChannel)
                     {
                         Console.WriteLine("Please enter channels (1 ~ 10) : ");
 
                         int channelNumber;
-                        isParseInt = int.TryParse(Console.ReadLine(), out channelNumber);
+                        var isParseInt = int.TryParse(Console.ReadLine(), out channelNumber);
                         Console.WriteLine("-------------------------------------------------------------------------------------------------------");
 
                         api[8] = Convert.ToByte(channelNumber);
@@ -199,8 +223,27 @@ namespace ModbusPlatform
 
                     if (commandIsExists)
                     {
+                        if (!isSphygmomanometer)
+                        {
+                            api[3] = Convert.ToByte(lockControlBoardNumber);
+
+                            if (dataLength == 9)
+                            {
+                                api[8] = Convert.ToByte(api[2] ^ api[3] ^ api[4] ^ api[5] ^ api[6] ^ api[7]);
+                                Console.WriteLine("get xor : " + string.Format("{0:X2}", api[8]));
+                            }
+                            else if (dataLength == 10)
+                            {
+                                api[9] = Convert.ToByte(api[2] ^ api[3] ^ api[4] ^ api[5] ^ api[6] ^ api[7] ^ api[8]);
+                                Console.WriteLine("get xor : " + string.Format("{0:X2}", api[9]));
+                            }
+                        }
+
                         try
-                        {                            
+                        {
+
+                            _serial_sphygmomanometer.Write(api, 0, api.Length);
+
                             var stringAPI = "";
 
                             foreach (var value in api)
@@ -208,16 +251,22 @@ namespace ModbusPlatform
                                 stringAPI += string.Format("{0:X2}",value) + " ";
                             }
 
-                            Console.WriteLine("Send API:" + stringAPI);
-                            
-                            _serial_sphygmomanometer.Write(api, 0, api.Length);
+                            Console.WriteLine("Send API:" + stringAPI);                                                     
 
                             byte[] resultArray = _serial_sphygmomanometer.ReadOfPort(dataLength);
 
                             string resultStr = System.Text.Encoding.UTF8.GetString(resultArray);
 
+                            stringAPI = "";
+
+                            foreach (var value in resultArray)
+                            {
+                                stringAPI += string.Format("{0:X2}", value) + " ";
+                            }
+
+                            Console.WriteLine("return result : " + stringAPI);
                             Console.WriteLine("return result : " + resultStr);
-                            
+
                         }
                         catch (global::System.Exception e)
                         {
@@ -231,11 +280,19 @@ namespace ModbusPlatform
                         Console.WriteLine("The command you entered is incorrect. Please re-enter");
                     }
 
-                    Console.WriteLine("====================================== END ======================================");
+                    Console.WriteLine("----------------------------------------------- END -----------------------------------------------");
                 }                
             }
             else {
                 Console.WriteLine("not found the ComPort");
+            }
+
+            //關閉 SerialPort
+            if (_serial_sphygmomanometer.IsOpen) 
+            {
+                _serial_sphygmomanometer.DiscardInBuffer();       // RX  清空 serial port 的緩存
+                _serial_sphygmomanometer.DiscardOutBuffer();      // TX  清空 serial port 的緩存
+                _serial_sphygmomanometer.Close();
             }
 
             Console.WriteLine("Please press any key to end the program");
@@ -246,6 +303,10 @@ namespace ModbusPlatform
 
         public class API
         {
+            /*
+                酒測血壓機指令 
+            */
+
             /// <summary>
             /// 取得數值
             /// </summary>
@@ -262,7 +323,7 @@ namespace ModbusPlatform
             public static byte[] StopMeasurement = new byte[10] { 0x16, 0x16, 0x01, 0x30, 0x30, 0x02, 0x52, 0x44, 0x03, 0x10 };
 
 
-            //智慧鑰匙櫃
+            //智慧鑰匙櫃指令
             /*
                 [0]  - 幀頭 固定 0x5A
                 [1]  - 幀頭 固定 0x5A
